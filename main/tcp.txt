@@ -1,0 +1,85 @@
+typedef enum{
+    TCFSM_READY,
+    TCFSM_WAIT,
+    TCFSM_ERROR
+}tcp_control_fsm;
+typedef struct{
+    int len;
+    char buf[120];
+}tcp_packet,*ptcp_packet;
+typedef struct{
+    tcp_control_fsm status;
+    tcp_packet recv_pack,send_pack;
+}tcp_recv_context,*ptcp_recv_context;
+tcp_recv_context _tcp_context;
+#define TCP_ORDER_MAXCNT (100)
+int tcp_order_cnt;
+char* tcp_order[TCP_ORDER_MAXCNT];
+int tcp_order_len[TCP_ORDER_MAXCNT];
+void (*tcp_order_cb_tb[TCP_ORDER_MAXCNT])(const int,ptcp_recv_context);
+void tcp_send(const int sock,int len,char* buf,ptcp_packet send_pack){
+    if(len>120)
+        return;
+    send_pack->len=len;
+    memcpy(send_pack->buf,buf,len);
+    do_send(sock,send_pack,len+4);
+}
+inline int min(int a,int b){return a<b?a:b;}
+void tcp_order_process(const int sock,ptcp_recv_context con){
+    for(int i=0;i<tcp_order_cnt;++i){
+        if(!tcp_order[i])continue;;
+        if(!strncmp(con->recv_pack.buf,tcp_order[i],min(tcp_order_len[i],con->recv_pack.len)))//find
+        {
+            ESP_LOGI("RECV ORDER ","%s",con->recv_pack.buf);
+            if(tcp_order_cb_tb[i])
+                tcp_order_cb_tb[i](sock,con);
+            break;
+        }
+    }
+}
+bool reg_tcp_order_cb(char* str,int len,void (*tcp_order_cb)(const int,ptcp_recv_context))
+{
+    for(int i=0;i<tcp_order_cnt;++i){
+        if(!strncmp(str,tcp_order[i],min(tcp_order_len[i],len))){
+            tcp_order_cb_tb[i]=tcp_order_cb;
+            return true;
+        }
+    }
+    for(int i=0;i<TCP_ORDER_MAXCNT;++i){
+        if(!tcp_order_cb_tb[i]){
+            tcp_order[i]=str;
+            tcp_order_cb_tb[i]=tcp_order_cb;
+            return true;
+        }
+    }
+    return false;
+}
+int tcp_con_recv(const int sock,char* buf,int len,void* context)
+{
+    ptcp_recv_context con=(ptcp_recv_context)context;
+    switch(con->status)
+    {
+        case TCFSM_READY:
+            con->recv_pack.len=*(uint32_t*)buf;
+            if(con->recv_pack.len>128)
+            {
+                con->recv_pack.len=0;
+                return 4;
+            }
+            con->status=TCFSM_WAIT;
+            return con->recv_pack.len;
+            break;
+        case TCFSM_WAIT:
+            if(con->recv_pack.len!=len){
+                con->status=TCFSM_READY;
+                con->recv_pack.len=0;
+                return 4;
+            }
+            tcp_order_process(sock,con);
+            return 4;
+            break;
+        default:
+            break;
+    }
+    return 4;
+}
