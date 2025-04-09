@@ -123,25 +123,9 @@ static uint8_t bt_hid_inited,bt_connected,try_con;
 #define NS_BT_120HZ
 //uint8_t IRAM_ATTR ns_bt_hid_get_packet_timer(){
 inline uint8_t ns_bt_hid_get_packet_timer(){
-        static DRAM_ATTR uint8_t cnt=0;
-        #ifdef NS_BT_120HZ
-        if(cnt++){
-                cnt=0;
-                global_packet_timer+=7;
-        }
-        else{
-                global_packet_timer+=8;
-        }
-        #else
-        if(++cnt>2){
-                cnt=0;
-                global_packet_timer+=16;
-        }
-        else{
-                global_packet_timer+=17;//best int totk test ,about 0.5%loss?
-        }
-        #endif
-        return global_packet_timer;
+        //return global_packet_timer;
+        //return xTaskGetTickCount();
+        return esp_timer_get_time()/5;
 }
 
 void ns_bt_hid_register_packet_dispatch(int typ,void (*handler)(cmd_packet*)){
@@ -266,8 +250,8 @@ void rpt_warpper(std_report* rpt,std_report_data* data,uint16_t len){
         rpt->battery_status=0x09;
         //todo : support battery quantity and charge state(oops,hardware doesnt support this one,so forget it);
         rpt->con_info=0x01;//todo : expect set this to 0x00 to be pro controller on battery,check if its correct;
-        rpt->rumble_status=0x80;//todo : value includes(0x70,0xC0,0xB0,0x80),what does these mean?//0x70 seems stable
-
+        //rpt->rumble_status=0x80;//todo : value includes(0x70,0xC0,0xB0,0x80),what does these mean?//0x70 seems stable
+        rpt->rumble_status=0xC0;
         //todo : set imu data
 }
 static void bt_send_enabler(void* args)
@@ -419,7 +403,7 @@ void bt_hid_init(){
         void esp_bt_hidd_cb(esp_hidd_cb_event_t, esp_hidd_cb_param_t*);
         esp_bt_hid_device_register_callback(esp_bt_hidd_cb);
         //esp_bt_hid_device_init();
-        esp_bredr_tx_power_set(ESP_PWR_LVL_N0,ESP_PWR_LVL_N0);
+        esp_bredr_tx_power_set(ESP_PWR_LVL_N12,ESP_PWR_LVL_N6);
         ESP_LOGI(__func__,"bt_hid_init1");
         if(pdPASS!=xTaskCreatePinnedToCore(ns_bt_hid_recv_task,"bt_recv_task",6144,NULL,2,&ns_bt_hid_recv_task_handle,0))
         {
@@ -613,18 +597,21 @@ void esp_bt_gap_cb(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param)
                 break;
         }
 }
-#define BT_RECONNECT_TIMEOUT (3000)
-#define BT_LISTENING_TIMEOUT (3000)
+#define BT_RECONNECT_TIMEOUT (6000)
+#define BT_LISTENING_TIMEOUT (6000)
 static uint8_t connect_fsm,reconnect_task_status;
 static TaskHandle_t reconnect_task_handle=NULL; 
 static uint32_t reconnect_task_tick=0;
 void reconnect_task()
 {
+        set_nosleep_bit(NOSLEEP_BT_CONNECTING,1);
         reconnect_task_tick=xTaskGetTickCount();
         connect_fsm=0;
         do{
                 if(connect_fsm){
                         vTaskDelay(20/portTICK_PERIOD_MS);
+                        if(xTaskGetTickCount()-reconnect_task_tick>=BT_RECONNECT_TIMEOUT)
+                                break;
                         continue;
                 }else{
                         if(bt_connected){
@@ -635,25 +622,42 @@ void reconnect_task()
                 connect_fsm=1;
                 esp_bt_gap_set_scan_mode(ESP_BT_NON_CONNECTABLE, ESP_BT_NON_DISCOVERABLE);
                 esp_bt_hid_device_connect(con_addr);
-        }while(reconnect_task_tick+BT_RECONNECT_TIMEOUT<xTaskGetTickCount());
-        reconnect_task_tick=xTaskGetTickCount();
+        }while(xTaskGetTickCount()-reconnect_task_tick<BT_RECONNECT_TIMEOUT);
+        reconnect_task_handle=NULL;
+        set_nosleep_bit(NOSLEEP_BT_CONNECTING,0);
+        vTaskDelete(NULL);
+}
+void _set_connectable()
+{
         esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_GENERAL_DISCOVERABLE);
         esp_bt_hid_device_connect(con_addr);
-        do{
-                if(bt_connected){
-                        reconnect_task_handle=NULL;
-                        vTaskDelete(NULL);
-                }
-                vTaskDelay(20);
-        }while(reconnect_task_tick+BT_LISTENING_TIMEOUT<xTaskGetTickCount());
-        //if task is still alive here,than connect fail,we request to go to sleep;
-        sleep_flag=1;
+        vTaskDelay(BT_LISTENING_TIMEOUT/portTICK_PERIOD_MS);
+        reconnect_task_handle=NULL;
+        set_nosleep_bit(NOSLEEP_BT_LISTENING,0);
+        vTaskDelete(NULL);
+}
+void set_connectable()
+{
+        if(reconnect_task_handle)return;
+        set_nosleep_bit(NOSLEEP_BT_LISTENING,1);
+        if(bt_connected)set_bt_status(1);
+        if(pdPASS!=xTaskCreatePinnedToCore(_set_connectable,"listen",4096,NULL,0,&reconnect_task_handle,0)){
+                reconnect_task_handle=NULL;
+        }
 }
 static uart_packet reply;
 void on_hid_connection_change()
 {
         ESP_LOGW(__func__,"bt_init:%d, bt_connected:%d",bt_hid_inited,bt_connected);
-        set_disablesleep_bit(0,bt_connected);
+        if(bt_connected)
+        {
+                set_nosleep_bit(NOSLEEP_BT_CONNECTED,1);
+                set_nosleep_bit(NOSLEEP_BT_CONNECTING,0);
+                set_nosleep_bit(NOSLEEP_BT_LISTENING,0);
+        }
+        else{
+                set_nosleep_bit(NOSLEEP_BT_CONNECTED,0);
+        }
         reply.typ=UART_PKG_CONNECT_CONTROL;
         reply.id=0xF;
         reply.arr[0]=bt_connected;
@@ -669,6 +673,7 @@ void connect_to_con()
 }
 void set_bt_status(uint8_t disable)
 {
+        set_nosleep_bit(NOSLEEP_SET_STATUS,1);
         xQueueSemaphoreTake(bt_hid_enable_semaphore,portMAX_DELAY);
         if(disable)
         {
@@ -683,7 +688,10 @@ void set_bt_status(uint8_t disable)
                 connect_to_con();
         }
         xSemaphoreGive(bt_hid_enable_semaphore);
+        set_nosleep_bit(NOSLEEP_SET_STATUS,0);
 }
+
+
 esp_link_key bt_key; 
 uint8_t* bt_hid_get_ltk()
 {

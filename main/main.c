@@ -24,6 +24,14 @@
 #include "web_ota.h"
 #include "pwr.h"
 
+/*//////////////////////////////////////
+todo: many many config things needed to be ported from ch32,but i cant be bothered now.
+anyone want to do this?its simple,just conf.c/h,and code a config syncing function.
+alright,not that simple.
+we can just sync from ch32 everytime we boot,but we need to sure we start uart first.
+///////////////////////////////////////*/
+
+
 static uint32_t sts_button;
 static uint16_t sts_button_simple;
 static uint32_t adc_data[10];
@@ -38,11 +46,6 @@ void fliper(){
         fliper_enable=!fliper_enable;
         max_packet_gap=0;
         sts_button=0;
-        //if(!fliper_enable)continue;
-        //ESP_LOGI(__func__,"  std: %d ",(int)sts_button);
-        //sts_button=sts_button^(1<<0);
-        //sts_button=(sts_button^(sts_button&0b10))|((!(sts_button&1))<<1);
-        //sts_button=sts_button<<1;
     }
 }
 
@@ -206,9 +209,10 @@ void general_monitor()
 {
     while(1)
     {
-        set_disablesleep_bit(1,!gpio_get_level(GPIO_NUM_32));
+        
+        set_nosleep_bit(NOSLEEP_USB,!gpio_get_level(GPIO_NUM_32));
         #ifdef DEBUG_NONSLEEP
-            set_disablesleep_bit(7,1);
+            set_nosleep_bit(NOSLEEP_DEBUG,1);
         #endif
         vTaskDelay(1000/portTICK_PERIOD_MS);
     }

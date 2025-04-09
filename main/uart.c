@@ -119,6 +119,9 @@ void IRAM_ATTR uart_pkt_handler(puart_packet pkg)
                     reply.id=0xE;
                     send_uart_pkt(&reply);
                     break;
+                case 5:
+                    set_connectable();
+                    break;
                 default:
                     break;
             }
@@ -130,11 +133,14 @@ void IRAM_ATTR uart_pkt_handler(puart_packet pkg)
             switch(pkg->id)
             {
                 case 0:
-                    set_disablesleep_bit(6,pkg->arr[0]);
+                    set_nosleep_bit(NOSLEEP_FORCED,pkg->arr[0]);
                     reply.typ=UART_PKG_PWR_CONTROL;
                     reply.id=0;
                     reply.arr[0]=pkg->arr[0];
                     send_uart_pkt(&reply);
+                    break;
+                case 1:
+                    //uart wkup;
                     break;
             }
             break;
