@@ -1,4 +1,6 @@
+#pragma once
 #include "esp_bt_defs.h"
+#include "esp_attr.h"
 #define MAX_ADC_CHANNEL_CNT (10)
 
 #define NS_SUBCOMMAND_REPORT_DATA_MAX_LENGTH (34)
@@ -10,7 +12,7 @@
 #define NS_ATTACHMENT_CMD_DATA_MAX_LENGTH (38)
 #define NS_PACKET_TYPE_MAX_VALUE (128)
 #define NS_SUBCOMMAND_ID_MAX_VLAUE (256)
-#define NS_STD_REPORT_BASIC_LENGTH (13)
+#define NS_STD_REPORT_BASIC_LENGTH (12)//(13)
 #define NS_SUBCOMMAND_CMD_HEADER_LENGTH (11)
 
 #define NS_SUBCOMMAND_STATUS_ACK (0x80)
@@ -69,8 +71,13 @@ typedef struct{
 typedef struct{
     uint8_t typ;
     uint8_t timer;
-    uint32_t rumble_data_left;
-    uint32_t rumble_data_right;
+    union{
+        struct{
+            uint32_t rumble_data_left;
+            uint32_t rumble_data_right;
+        };
+        uint8_t rumble_data[8];
+    };
 }cmd_std;
 typedef struct{
     cmd_std cmd_header;
@@ -104,14 +111,18 @@ typedef struct{
 
 extern NS_REPORT_MODE report_mode;
 extern uint8_t bt_addr[ESP_BD_ADDR_LEN];
-extern uint8_t con_addr[ESP_BD_ADDR_LEN];
-extern uint8_t is_connected,is_paired,auto_con;
-extern uint32_t average_packet_gap,last_packet_send;
+extern uint8_t con_addr[ESP_BD_ADDR_LEN],con_addr_set;
+extern uint8_t is_connected,is_paired,auto_con,global_packet_timer;
+extern uint32_t average_packet_gap,last_packet_send,max_packet_gap,tp_timer;
+extern DRAM_ATTR peripheral_data global_input_data;
 
 
-esp_err_t ns_bt_hid_send_raw(void*,int);
+esp_err_t ns_bt_hid_send_raw(uint8_t,void*,int);
 esp_err_t ns_send_interrupt(simple_report*);
 int ns_send_report(report_packet*);
 void ns_register_subcommand_cb(int,void (*)(cmd_subcommand*,uint8_t));//SET CB NULL TO UNREG
 void ns_set_peripheral_data_getter(void (*)(peripheral_data*));
 void bt_hid_init();
+void set_bt_status(uint8_t);
+uint8_t* bt_hid_get_ltk();
+void set_connectable();

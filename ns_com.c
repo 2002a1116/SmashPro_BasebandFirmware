@@ -28,6 +28,7 @@
 #include "bt_hid_manager.h"
 #include "ns_com.h"
 #include "uart.h"
+#include "conf.h"
 
 
 #define NS_SUBCOMMAND_CB_PARAM cmd_subcommand* cmd,uint8_t len
@@ -193,6 +194,8 @@ void ns_subcommand_spi_read(NS_SUBCOMMAND_CB_PARAM){
     }
     _ns_subcommand_set_ack(cmd->subcommand_id,0x90);
     memcpy(pkt.data.subcommand_report.subcommand_data,cmd->subcommand_data,SUBC_INPUT_SPI_READ_DATA_LENGTH);
+
+    /*
     //todo actual spi read
     int typ=0;
     switch(*(uint16_t*)cmd->subcommand_data)//todo : rewrite these shit,figure out whats what
@@ -237,10 +240,12 @@ void ns_subcommand_spi_read(NS_SUBCOMMAND_CB_PARAM){
             ESP_LOGW("","warning spi read unknown addr");
             break;
     }
+    */
+    conf_read(addr,pkt.data.subcommand_report.subcommand_data+SUBC_INPUT_SPI_READ_DATA_LENGTH,size);
     //pkt.len=SUBC_REPORT_SPI_READ_LENGTH+size;
     pkt.len=SUBC_REPORT_BASIC_LENGTH+size;
     //memcpy(pkt.data.subcommand_report.subcommand_data+SUBC_INPUT_SPI_READ_DATA_LENGTH,spi_data[typ],size);
-    ESP_LOGW("","len :%d ,typ:%d",pkt.len,typ);
+    //ESP_LOGW("","len :%d ,typ:%d",pkt.len,typ);
     ns_send_report(&pkt);
 }
 
@@ -251,6 +256,7 @@ void ns_subcommand_spi_write(NS_SUBCOMMAND_CB_PARAM){
     uint32_t addr=*(uint32_t*)cmd->subcommand_data;
     uint8_t size=cmd->subcommand_data[4];
     uint8_t *data=cmd->subcommand_data+5;
+    conf_write(addr,data,size);
     //todo spi write,Replies with x8011 ack and a uint8 status. x00 = success, x01 = write protected.
     _ns_subcommand_set_ack(cmd->subcommand_id,DEFAULT_ACK);
     pkt.data.subcommand_report.subcommand_data[0]=0x00;

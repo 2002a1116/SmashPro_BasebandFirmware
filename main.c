@@ -23,6 +23,7 @@
 #include "tcp_com.h"
 #include "web_ota.h"
 #include "pwr.h"
+#include "conf.h"
 
 /*//////////////////////////////////////
 todo: many many config things needed to be ported from ch32,but i cant be bothered now.
@@ -198,7 +199,7 @@ void uart_heart_beat_task()
     pkt.id=0xC;
     while(1)
     {
-        pkt.arr[0]=is_paired;
+        pkt.load[0]=is_paired;
         //ESP_LOGI("","UART SEND STARTER");
         send_uart_pkt(&pkt);
         vTaskDelay(1000/portTICK_PERIOD_MS);
@@ -209,7 +210,6 @@ void general_monitor()
 {
     while(1)
     {
-        
         set_nosleep_bit(NOSLEEP_USB,!gpio_get_level(GPIO_NUM_32));
         #ifdef DEBUG_NONSLEEP
             set_nosleep_bit(NOSLEEP_DEBUG,1);
@@ -253,8 +253,9 @@ void app_main(void)
     ns_subcommand_callback_init();
     ns_set_peripheral_data_getter(uart_get_peripheral_data);
     //ns_set_peripheral_data_getter(get_peripheral_data_handler);
-    bt_hid_init();
     uart_init();
+    conf_init();
+    bt_hid_init();
     xTaskCreatePinnedToCore(monitor,"monitor",2048,NULL,0,&MonitorHandle,0);
     xTaskCreatePinnedToCore(uart_heart_beat_task,"uart_hb",2048,NULL,0,&uart_heart_beat_task_handle,0);
     xTaskCreatePinnedToCore(general_monitor,"gm",1024,NULL,0,&general_monitor_handle,0);

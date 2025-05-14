@@ -1,10 +1,12 @@
+set(COMPONENT_SRCS "async.c" "conf.c" "i2c.c" "web_ota.c" "pwr.c" "uart.c" "tcp_com.c" "ns_com.c" "flash.c" "main.c" "hardware.c" "ananlog.c" "wifi.c" "bt_hid_manager.c")
+set(COMPONENT_ADD_INCLUDEDIRS "./")
+set(COMPONENT_EMBED_FILES
+    "html/www/HttpOTA.html.gz"
+    )
 
-# The following lines of boilerplate have to be in your project's
-# CMakeLists in this exact order for cmake to work correctly
-cmake_minimum_required(VERSION 3.16)
-add_compile_options("-Wno-format")
+file(GLOB SRC_LIST "*.c" "*.cpp")
 
-include($ENV{IDF_PATH}/tools/cmake/project.cmake)
-project(bluetooth)
-# 查找当前目录下的所有源文件
-# 并将名称保存到 DIR_SRCS 变量
+
+register_component()
+
+#idf_component_register(SRCS  ${SRC_LIST} INCLUDE_DIRS ".")
