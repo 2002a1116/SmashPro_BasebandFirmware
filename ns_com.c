@@ -71,7 +71,7 @@ typedef struct{
     uint8_t use_spi_color;
 }device_info;
 #pragma pack(pop)
-device_info default_device_info={0x03,0x48,0x03,0x02,{},0x01,0x00};
+device_info default_device_info={0x03,0x49,0x03,0x02,{},0x04,0x02};
 void ns_subcommand_get_device_info(NS_SUBCOMMAND_CB_PARAM){
     pkt_clr();
     //pkt.report.subcommand_report.subcommand_status=NS_SUBCOMMAND_STATUS_ACK;
@@ -194,7 +194,14 @@ void ns_subcommand_spi_read(NS_SUBCOMMAND_CB_PARAM){
     }
     _ns_subcommand_set_ack(cmd->subcommand_id,0x90);
     memcpy(pkt.data.subcommand_report.subcommand_data,cmd->subcommand_data,SUBC_INPUT_SPI_READ_DATA_LENGTH);
+    conf_read(addr,pkt.data.subcommand_report.subcommand_data+SUBC_INPUT_SPI_READ_DATA_LENGTH,size);
+    //pkt.len=SUBC_REPORT_SPI_READ_LENGTH+size;
+    pkt.len=SUBC_REPORT_BASIC_LENGTH+SUBC_INPUT_SPI_READ_DATA_LENGTH+size;
+    //memcpy(pkt.data.subcommand_report.subcommand_data+SUBC_INPUT_SPI_READ_DATA_LENGTH,spi_data[typ],size);
+    //ESP_LOGW("","len :%d ,typ:%d",pkt.len,typ);
+    ns_send_report(&pkt);
 
+    
     /*
     //todo actual spi read
     int typ=0;
@@ -241,12 +248,6 @@ void ns_subcommand_spi_read(NS_SUBCOMMAND_CB_PARAM){
             break;
     }
     */
-    conf_read(addr,pkt.data.subcommand_report.subcommand_data+SUBC_INPUT_SPI_READ_DATA_LENGTH,size);
-    //pkt.len=SUBC_REPORT_SPI_READ_LENGTH+size;
-    pkt.len=SUBC_REPORT_BASIC_LENGTH+size;
-    //memcpy(pkt.data.subcommand_report.subcommand_data+SUBC_INPUT_SPI_READ_DATA_LENGTH,spi_data[typ],size);
-    //ESP_LOGW("","len :%d ,typ:%d",pkt.len,typ);
-    ns_send_report(&pkt);
 }
 
 #define SUBC_REPORT_SPI_WRITE_LENGTH (3)

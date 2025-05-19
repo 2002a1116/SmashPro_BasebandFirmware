@@ -8,6 +8,7 @@
  #include "flash.h"
  #include "uart.h"
  #include "conf.h"
+ #include "esp_log.h"
 
  #include <string.h>
  
@@ -31,6 +32,7 @@
     }
     pkg.id=0x6;
     for(int i=0;i<sizeof(factory_configuration);i+=8){
+        ESP_LOGE(__func__,"init 0x6 offset:%d",i);
         pkg.load[0]=i;
         send_uart_pkt(&pkg);
         send_uart_pkt(&pkg);
@@ -46,6 +48,7 @@
     if(!p)return;
     if(p->typ!=UART_PKG_CH32_FLASH_READ&&p->typ!=UART_PKG_CH32_FLASH_WRITE)return;
     if(p->typ==UART_PKG_CH32_FLASH_READ){
+        ESP_LOGW(__func__,"recv %d offset:%d",p->id,p->load[0]);
         switch(p->id){
             case 0xF://user config
                 memcpy(((uint8_t*)&user_config)+p->load[0],p->load+1,i32_min(8,sizeof(user_config)-p->load[0]));

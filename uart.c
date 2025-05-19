@@ -126,6 +126,8 @@ void IRAM_ATTR uart_pkt_handler(puart_packet pkg)
                     break;
             }
             break;
+        case UART_PKG_CH32_FLASH_WRITE:
+            /*fall through*/
         case UART_PKG_CH32_FLASH_READ:
             uart_config_cb(pkg);
         /*case UART_PKG_LTK:
