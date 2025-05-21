@@ -71,11 +71,13 @@ void IRAM_ATTR uart_pkt_handler(puart_packet pkg)
                 case 0:
                     if(pkg->load[0]){
                         //bt_status|=0x1;
-                        set_bt_status(0);
+                        //set_bt_status(0);
+                        bt_connect_async_config(0,0);
                     }
                     else{
                         //bt_status&=0xfe;
-                        set_bt_status(1);
+                        //set_bt_status(1);
+                        bt_connect_async_config(1,0);
                     }
                     break;
                 case 1:
@@ -102,7 +104,8 @@ void IRAM_ATTR uart_pkt_handler(puart_packet pkg)
                     send_uart_pkt(&reply);
                     break;
                 case 5:
-                    set_connectable();
+                    bt_connect_async_config(0,1);
+                    //set_connectable();
                     break;
                 default:
                     break;

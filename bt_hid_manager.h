@@ -123,6 +123,8 @@ int ns_send_report(report_packet*);
 void ns_register_subcommand_cb(int,void (*)(cmd_subcommand*,uint8_t));//SET CB NULL TO UNREG
 void ns_set_peripheral_data_getter(void (*)(peripheral_data*));
 void bt_hid_init();
-void set_bt_status(uint8_t);
 uint8_t* bt_hid_get_ltk();
-void set_connectable();
+//void set_connectable();
+//void set_bt_status(uint8_t);
+//reused as internal api
+uint8_t bt_connect_async_config(uint8_t disabled,uint8_t discoverable);

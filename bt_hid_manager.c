@@ -112,7 +112,7 @@ static TaskHandle_t ns_bt_hid_recv_task_handle=NULL;
 DRAM_ATTR peripheral_data global_input_data;
 DRAM_ATTR uint8_t global_packet_timer;
 static uint32_t last_packet_timer,current_packet_timer;
-static SemaphoreHandle_t bt_hid_enable_semaphore=NULL;
+static SemaphoreHandle_t bt_connect_async_config_semaphore=NULL;
 static SemaphoreHandle_t bt_hid_send_semaphore=NULL;
 static SemaphoreHandle_t bt_hid_send_std_report_semaphore=NULL;
 
@@ -120,6 +120,10 @@ void DRAM_ATTR (*get_peripheral_data)(peripheral_data*);
 static void (*ns_bt_hid_packet_dispatch_tb[NS_PACKET_TYPE_MAX_VALUE])(cmd_packet*);
 static void (*ns_cmd_subcommand_cb_tb[NS_SUBCOMMAND_ID_MAX_VLAUE])(cmd_subcommand*,uint8_t);
 static uint8_t bt_hid_inited,bt_connected,try_con;
+
+void set_connectable();
+void set_bt_status(uint8_t);
+
 #define NS_BT_120HZ
 //uint8_t IRAM_ATTR ns_bt_hid_get_packet_timer(){
 inline uint8_t ns_bt_hid_get_packet_timer(){
@@ -343,7 +347,7 @@ void bt_hid_init(){
                 con_addr_set=1;
         esp_err_t ret;
         bt_hid_send_semaphore=xSemaphoreCreateMutex();
-        bt_hid_enable_semaphore=xSemaphoreCreateMutex();
+        bt_connect_async_config_semaphore=xSemaphoreCreateMutex();
         bt_hid_send_std_report_semaphore=xSemaphoreCreateMutex();
         report_queue=xQueueCreate(50,sizeof(report_packet));
         command_queue=xQueueCreate(50,sizeof(cmd_packet));
@@ -612,8 +616,11 @@ void esp_bt_gap_cb(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param)
 static uint8_t connect_fsm,reconnect_task_status;
 static TaskHandle_t reconnect_task_handle=NULL; 
 static uint32_t reconnect_task_tick=0;
+static uint8_t bt_connect_critical;
 void reconnect_task()
 {
+        if(bt_connect_critical)return;
+        bt_connect_critical=1;
         set_nosleep_bit(NOSLEEP_BT_CONNECTING,1);
         reconnect_task_tick=xTaskGetTickCount();
         connect_fsm=0;
@@ -635,25 +642,26 @@ void reconnect_task()
         }while(xTaskGetTickCount()-reconnect_task_tick<BT_RECONNECT_TIMEOUT);
         reconnect_task_handle=NULL;
         set_nosleep_bit(NOSLEEP_BT_CONNECTING,0);
+        bt_connect_critical=0;
         vTaskDelete(NULL);
 }
 void _set_connectable()
 {
         esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_GENERAL_DISCOVERABLE);
-        esp_bt_hid_device_connect(con_addr);
+        //esp_bt_hid_device_connect(con_addr);
         vTaskDelay(BT_LISTENING_TIMEOUT/portTICK_PERIOD_MS);
         reconnect_task_handle=NULL;
         set_nosleep_bit(NOSLEEP_BT_LISTENING,0);
-        vTaskDelete(NULL);
 }
 void set_connectable()
 {
         if(reconnect_task_handle)return;
         set_nosleep_bit(NOSLEEP_BT_LISTENING,1);
         if(bt_connected)set_bt_status(1);
-        if(pdPASS!=xTaskCreatePinnedToCore(_set_connectable,"listen",4096,NULL,0,&reconnect_task_handle,0)){
+        /*if(pdPASS!=xTaskCreatePinnedToCore(_set_connectable,"listen",4096,NULL,0,&reconnect_task_handle,0)){
                 reconnect_task_handle=NULL;
-        }
+        }*/
+        _set_connectable();
 }
 static uart_packet reply;
 void on_hid_connection_change()
@@ -676,15 +684,15 @@ void on_hid_connection_change()
 }
 void connect_to_con()
 {
-        if(bt_connected||reconnect_task_handle)return;
-        if(pdPASS!=xTaskCreatePinnedToCore(reconnect_task,"connect",4096,NULL,0,&reconnect_task_handle,0)){
+        if(bt_connected)return;
+        /*if(pdPASS!=xTaskCreatePinnedToCore(reconnect_task,"connect",4096,NULL,0,&reconnect_task_handle,0)){
                 reconnect_task_handle=NULL;
-        }
+        }*/
+        reconnect_task();
 }
 void set_bt_status(uint8_t disable)
 {
         set_nosleep_bit(NOSLEEP_SET_STATUS,1);
-        xQueueSemaphoreTake(bt_hid_enable_semaphore,portMAX_DELAY);
         if(disable)
         {
                 if(bt_connected){
@@ -697,10 +705,44 @@ void set_bt_status(uint8_t disable)
         {
                 connect_to_con();
         }
-        xSemaphoreGive(bt_hid_enable_semaphore);
         set_nosleep_bit(NOSLEEP_SET_STATUS,0);
 }
-
+static TaskHandle_t bt_connect_config_async_task_handle=NULL;
+void bt_connect_config(void* param){
+        uint8_t disabled=((uint32_t)param)&0x01;
+        uint8_t discoverable=((uint32_t)param)&0x02;
+        if(!discoverable){//connect to console
+                set_bt_status(disabled);
+        }else{//set to discoverable
+                if(bt_connected){
+                        set_bt_status(1);//disabled
+                }
+                set_connectable();
+        }
+        xQueueSemaphoreTake(bt_connect_async_config_semaphore,portMAX_DELAY);
+        bt_connect_critical=0;
+        xSemaphoreGive(bt_connect_async_config_semaphore);
+        //exit critical
+        vTaskDelete(NULL);
+}
+uint8_t bt_connect_async_config(uint8_t disabled,uint8_t discoverable){
+        //enter critical
+        xQueueSemaphoreTake(bt_connect_async_config_semaphore,portMAX_DELAY);
+        if(bt_connect_critical){
+                xSemaphoreGive(bt_connect_async_config_semaphore);
+                return 1;
+        }
+        bt_connect_critical=1;
+        xSemaphoreGive(bt_connect_async_config_semaphore);
+        uint32_t param=(discoverable<<1)|disabled;
+        if(pdPASS!=xTaskCreatePinnedToCore(bt_connect_config,"connect",4096,(void*)param,0,&bt_connect_config_async_task_handle,0)){
+                xQueueSemaphoreTake(bt_connect_async_config_semaphore,portMAX_DELAY);
+                bt_connect_critical=0;
+                xSemaphoreGive(bt_connect_async_config_semaphore);
+                return 2;
+        }
+        return 0;
+}
 
 esp_link_key bt_key; 
 uint8_t* bt_hid_get_ltk()
