@@ -115,6 +115,7 @@ extern uint8_t con_addr[ESP_BD_ADDR_LEN],con_addr_set;
 extern uint8_t is_connected,is_paired,auto_con,global_packet_timer;
 extern uint32_t average_packet_gap,last_packet_send,max_packet_gap,tp_timer;
 extern DRAM_ATTR peripheral_data global_input_data;
+extern uint8_t bt_connected;
 
 
 esp_err_t ns_bt_hid_send_raw(uint8_t,void*,int);
@@ -123,6 +124,7 @@ int ns_send_report(report_packet*);
 void ns_register_subcommand_cb(int,void (*)(cmd_subcommand*,uint8_t));//SET CB NULL TO UNREG
 void ns_set_peripheral_data_getter(void (*)(peripheral_data*));
 void bt_hid_init();
+void print_bt_address(uint8_t* bd_addr);
 uint8_t* bt_hid_get_ltk();
 //void set_connectable();
 //void set_bt_status(uint8_t);

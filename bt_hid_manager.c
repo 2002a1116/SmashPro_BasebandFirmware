@@ -119,7 +119,7 @@ static SemaphoreHandle_t bt_hid_send_std_report_semaphore=NULL;
 void DRAM_ATTR (*get_peripheral_data)(peripheral_data*);
 static void (*ns_bt_hid_packet_dispatch_tb[NS_PACKET_TYPE_MAX_VALUE])(cmd_packet*);
 static void (*ns_cmd_subcommand_cb_tb[NS_SUBCOMMAND_ID_MAX_VLAUE])(cmd_subcommand*,uint8_t);
-static uint8_t bt_hid_inited,bt_connected,try_con;
+uint8_t bt_hid_inited,bt_connected;
 
 void set_connectable();
 void set_bt_status(uint8_t);
@@ -314,12 +314,9 @@ void ns_bt_hid_send_task(){
                 act=false;
         }
 }
-void print_bt_address() {
+void print_bt_address(uint8_t* bd_addr) {
         const char* TAG = "bt_address";
-        const uint8_t* bd_addr;
-
-        //bd_addr = esp_bt_dev_get_address();
-        bd_addr=bt_addr;
+        if(bd_addr)return;
         ESP_LOGI(TAG, "my bluetooth address is %02X:%02X:%02X:%02X:%02X:%02X",
                  bd_addr[0], bd_addr[1], bd_addr[2], bd_addr[3], bd_addr[4], bd_addr[5]);
 }
@@ -337,7 +334,7 @@ esp_err_t set_bt_address()
                 }
                 err = esp_base_mac_addr_set(bt_addr);
                 printf("sat %d\n",err);
-                print_bt_address();
+                print_bt_address(bt_addr);
         }while(err!=ESP_OK);
         printf("sat bt addr %d\n",err);
         return err;
@@ -404,7 +401,7 @@ void bt_hid_init(){
         }
         uint8_t* ptr=esp_bt_dev_get_address();
         memcpy(bt_addr,ptr,ESP_BD_ADDR_LEN);//a workaround for mac changed for no reason
-        print_bt_address();
+        print_bt_address(bt_addr);
         esp_bt_dev_set_device_name("Pro Controller");
         esp_bt_cod_t cod;
         esp_bt_sp_param_t param_type = ESP_BT_SP_IOCAP_MODE;
@@ -446,7 +443,7 @@ void bt_hid_init(){
         ESP_LOGI(__func__,"BT INITED");
         esp_bt_hid_device_init();
         return;
-        esp_bt_hid_device_connect(con_addr);
+        //esp_bt_hid_device_connect(con_addr);
 }
 static uint8_t vc_unpluged;
 void esp_bt_hidd_cb(esp_hidd_cb_event_t event, esp_hidd_cb_param_t *param)
@@ -514,7 +511,6 @@ void esp_bt_hidd_cb(esp_hidd_cb_event_t event, esp_hidd_cb_param_t *param)
                 } else {
                         ESP_LOGE(TAG, "open failed! %d %d",param->open.status,param->open.conn_status);
                 }
-                try_con=0;
                 on_hid_connection_change();
                 break;
         case ESP_HIDD_CLOSE_EVT:
@@ -619,8 +615,6 @@ static uint32_t reconnect_task_tick=0;
 static uint8_t bt_connect_critical;
 void reconnect_task()
 {
-        if(bt_connect_critical)return;
-        bt_connect_critical=1;
         set_nosleep_bit(NOSLEEP_BT_CONNECTING,1);
         reconnect_task_tick=xTaskGetTickCount();
         connect_fsm=0;
@@ -632,18 +626,16 @@ void reconnect_task()
                         continue;
                 }else{
                         if(bt_connected){
-                                reconnect_task_handle=NULL;
-                                vTaskDelete(NULL);
+                                return;
                         }
                 }
                 connect_fsm=1;
                 esp_bt_gap_set_scan_mode(ESP_BT_NON_CONNECTABLE, ESP_BT_NON_DISCOVERABLE);
+                ESP_LOGI(__func__,"connect to");
                 esp_bt_hid_device_connect(con_addr);
         }while(xTaskGetTickCount()-reconnect_task_tick<BT_RECONNECT_TIMEOUT);
-        reconnect_task_handle=NULL;
         set_nosleep_bit(NOSLEEP_BT_CONNECTING,0);
-        bt_connect_critical=0;
-        vTaskDelete(NULL);
+        return;
 }
 void _set_connectable()
 {
@@ -711,6 +703,7 @@ static TaskHandle_t bt_connect_config_async_task_handle=NULL;
 void bt_connect_config(void* param){
         uint8_t disabled=((uint32_t)param)&0x01;
         uint8_t discoverable=((uint32_t)param)&0x02;
+        ESP_LOGW(__func__,"%d %d",disabled,discoverable);
         if(!discoverable){//connect to console
                 set_bt_status(disabled);
         }else{//set to discoverable
@@ -735,6 +728,7 @@ uint8_t bt_connect_async_config(uint8_t disabled,uint8_t discoverable){
         bt_connect_critical=1;
         xSemaphoreGive(bt_connect_async_config_semaphore);
         uint32_t param=(discoverable<<1)|disabled;
+        ESP_LOGI(__func__,"%d %d",disabled,discoverable);
         if(pdPASS!=xTaskCreatePinnedToCore(bt_connect_config,"connect",4096,(void*)param,0,&bt_connect_config_async_task_handle,0)){
                 xQueueSemaphoreTake(bt_connect_async_config_semaphore,portMAX_DELAY);
                 bt_connect_critical=0;

@@ -118,11 +118,12 @@ static void monitor(){
             //printf("%d",(int)(sts_button>>i)&1);
             printf("%d",(int)(global_input_data.button_status>>i)&1);
         }*/
-       printf("%d %d %d",(global_input_data.button_status>>16)&0xff,
-       (global_input_data.button_status>>8)&0xff,global_input_data.button_status&0xff);
-        printf("\n");
-        printf("%d %d %d %d\n",(global_input_data.ljoy_status&0xfff),global_input_data.ljoy_status>>12,
-        (global_input_data.rjoy_status&0xfff),global_input_data.rjoy_status>>12);
+       ESP_LOGI(__func__,"bt_connect:%d %d %d",bt_connected,0,0);
+       
+        ESP_LOGI(__func__, "console address is %02x:%02x:%02x:%02x:%02x:%02x",
+                 con_addr[0], con_addr[1], con_addr[2], con_addr[3], con_addr[4], con_addr[5]);
+       //print_bt_address(con_addr);
+
         //ESP_LOGI("Monitor","button sts:%032b",(unsigned int)sts_button);
        // ESP_LOGI("Monitor","paired %d",is_paired);
         //ESP_LOGI("Monitor","average gap %"PRIu32,average_packet_gap);
